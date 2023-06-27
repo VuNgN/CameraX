@@ -43,6 +43,9 @@ import androidx.compose.material.icons.rounded.Cameraswitch
 import androidx.compose.material.icons.rounded.FlashOff
 import androidx.compose.material.icons.rounded.FlashOn
 import androidx.compose.material.icons.rounded.Image
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Divider
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.Icon
@@ -53,6 +56,9 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Tab
+import androidx.compose.material3.TabRow
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -64,14 +70,17 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import com.google.common.util.concurrent.ListenableFuture
+import com.google.mlkit.vision.barcode.common.Barcode
 import com.vungn.camerax.MainActivity.Companion.TAG
 import com.vungn.camerax.ui.theme.CameraXTheme
 import com.vungn.camerax.util.CameraXHelper
@@ -108,6 +117,7 @@ class MainActivity : ComponentActivity() {
             val meteringPoint = cameraXHelper.meteringPoint.collectAsState()
             val aspectRatio = cameraXHelper.aspectRatio.collectAsState()
             val cameraLen = cameraXHelper.len.collectAsState()
+            val barcodes = cameraXHelper.barcodes.collectAsState()
             val requestMultiplePermissions =
                 rememberLauncherForActivityResult(contract = ActivityResultContracts.RequestMultiplePermissions(),
                     onResult = { permissions ->
@@ -122,7 +132,8 @@ class MainActivity : ComponentActivity() {
                     )
                 )
             })
-            LaunchedEffect(key1 = isGranted.value,
+            LaunchedEffect(
+                key1 = isGranted.value,
                 key2 = aspectRatio.value,
                 key3 = cameraLen.value,
                 block = {
@@ -161,6 +172,7 @@ class MainActivity : ComponentActivity() {
                             meteringPoint = meteringPoint.value,
                             aspectRatio = aspectRatio.value,
                             cameraLen = cameraLen.value,
+                            barcodes = barcodes.value,
                             imageCapturing = cameraXHelper::imageCapturing,
                             changeTorchState = cameraXHelper::changeTorchState,
                             changeRatio = cameraXHelper::changeAspectRatio,
@@ -188,6 +200,7 @@ fun CameraX(
     ),
     aspectRatio: Int = AspectRatio.RATIO_4_3,
     cameraLen: Int = CameraSelector.LENS_FACING_BACK,
+    barcodes: List<Barcode>,
     imageCapturing: () -> Unit = {},
     changeTorchState: () -> Unit = {},
     changeRatio: (Int) -> Unit = {},
@@ -238,6 +251,24 @@ fun CameraX(
             )
             if (showMeteringView) {
                 FocusView(meteringPoint)
+            }
+            if (barcodes.isNotEmpty()) {
+                barcodes.forEach { barcode ->
+                    Button(modifier = Modifier
+                        .graphicsLayer(
+                            translationX = barcode.boundingBox?.exactCenterX()!!,
+                            translationY = barcode.boundingBox?.exactCenterY()!!
+                        )
+                        .clip(RoundedCornerShape(10.dp)), colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.5f),
+                        contentColor = MaterialTheme.colorScheme.onPrimary
+                    ), onClick = {}) {
+                        Text(
+                            text = barcode.rawValue.toString(),
+                            style = MaterialTheme.typography.bodyMedium
+                        )
+                    }
+                }
             }
         }
     }
@@ -324,47 +355,63 @@ fun BottomController(
     imageCapturing: () -> Unit = {},
     switchCamera: (Int) -> Unit
 ) {
-    Row(
-        modifier = modifier.padding(bottom = paddingBottom),
-        horizontalArrangement = Arrangement.SpaceAround,
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        FilledIconButton(
-            modifier = Modifier
-                .clip(CircleShape)
-                .size(50.dp),
-            onClick = { /*TODO*/ },
-            colors = IconButtonDefaults.iconButtonColors(
-                containerColor = MaterialTheme.colorScheme.background.copy(
-                    0.5f
-                ), contentColor = MaterialTheme.colorScheme.onBackground
-            )
-        ) {
-            Icon(imageVector = Icons.Rounded.Image, contentDescription = "Select image")
+    var state by remember { mutableStateOf(0) }
+    val titles = listOf("Photo", "Video")
+    Column(modifier = modifier) {
+        TabRow(selectedTabIndex = state,
+            containerColor = Color.Transparent,
+            contentColor = MaterialTheme.colorScheme.onBackground,
+            divider = { Divider(color = Color.Transparent) }) {
+            titles.forEachIndexed { index, title ->
+                Tab(selected = state == index,
+                    onClick = { state = index },
+                    text = { Text(text = title, maxLines = 2, overflow = TextOverflow.Ellipsis) })
+            }
         }
-
-        Surface(
+        Row(
             modifier = Modifier
-                .size(60.dp)
-                .clip(CircleShape)
-                .background(Color.Transparent)
-                .border(4.dp, Color.Gray, CircleShape)
-                .clickable { imageCapturing() },
-            color = Color.Gray.copy(alpha = 0.5f)
-        ) {}
-
-        FilledIconButton(
-            modifier = Modifier
-                .clip(CircleShape)
-                .size(50.dp),
-            onClick = { switchCamera(if (cameraLen == CameraSelector.LENS_FACING_BACK) CameraSelector.LENS_FACING_FRONT else CameraSelector.LENS_FACING_BACK) },
-            colors = IconButtonDefaults.iconButtonColors(
-                containerColor = MaterialTheme.colorScheme.background.copy(
-                    0.5f
-                ), contentColor = MaterialTheme.colorScheme.onBackground
-            )
+                .fillMaxWidth()
+                .padding(top = paddingBottom / 2, bottom = paddingBottom),
+            horizontalArrangement = Arrangement.SpaceAround,
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            Icon(imageVector = Icons.Rounded.Cameraswitch, contentDescription = "Switch camera")
+            FilledIconButton(
+                modifier = Modifier
+                    .clip(CircleShape)
+                    .size(50.dp),
+                onClick = { /*TODO*/ },
+                colors = IconButtonDefaults.iconButtonColors(
+                    containerColor = MaterialTheme.colorScheme.background.copy(
+                        0.5f
+                    ), contentColor = MaterialTheme.colorScheme.onBackground
+                )
+            ) {
+                Icon(imageVector = Icons.Rounded.Image, contentDescription = "Select image")
+            }
+
+            Surface(
+                modifier = Modifier
+                    .size(60.dp)
+                    .clip(CircleShape)
+                    .background(Color.Transparent)
+                    .border(4.dp, Color.Gray, CircleShape)
+                    .clickable { imageCapturing() },
+                color = Color.Gray.copy(alpha = 0.5f)
+            ) {}
+
+            FilledIconButton(
+                modifier = Modifier
+                    .clip(CircleShape)
+                    .size(50.dp),
+                onClick = { switchCamera(if (cameraLen == CameraSelector.LENS_FACING_BACK) CameraSelector.LENS_FACING_FRONT else CameraSelector.LENS_FACING_BACK) },
+                colors = IconButtonDefaults.iconButtonColors(
+                    containerColor = MaterialTheme.colorScheme.background.copy(
+                        0.5f
+                    ), contentColor = MaterialTheme.colorScheme.onBackground
+                )
+            ) {
+                Icon(imageVector = Icons.Rounded.Cameraswitch, contentDescription = "Switch camera")
+            }
         }
     }
 }

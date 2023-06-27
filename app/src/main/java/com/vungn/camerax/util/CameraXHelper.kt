@@ -19,6 +19,7 @@ import androidx.camera.view.PreviewView
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.lifecycleScope
+import com.google.mlkit.vision.barcode.common.Barcode
 import com.vungn.camerax.MainActivity
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
@@ -39,6 +40,7 @@ class CameraXHelper {
         MutableStateFlow(MeteringPoint(0f, 0f, MeteringPointFactory.getDefaultPointSize()))
     private val _aspectRatio: MutableStateFlow<Int> = MutableStateFlow(AspectRatio.RATIO_4_3)
     private val _len: MutableStateFlow<Int> = MutableStateFlow(CameraSelector.LENS_FACING_BACK)
+    private val _barcodes: MutableStateFlow<List<Barcode>> = MutableStateFlow(emptyList())
 
     val camera: Camera?
         get() = _camera
@@ -54,6 +56,8 @@ class CameraXHelper {
         get() = _aspectRatio
     val len: MutableStateFlow<Int>
         get() = _len
+    val barcodes: MutableStateFlow<List<Barcode>>
+        get() = _barcodes
 
     fun bindPreview(
         context: Context,
@@ -78,9 +82,20 @@ class CameraXHelper {
             .setTargetAspectRatio(_aspectRatio.value).build()
         _imageCapture.enableOrientation(context)
 
+        // Image analysis
+        val imageAnalysis =
+            androidx.camera.core.ImageAnalysis.Builder().setTargetAspectRatio(_aspectRatio.value)
+                .setBackpressureStrategy(androidx.camera.core.ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
+                .build()
+        imageAnalysis.setupAnalyzer {
+            lifecycleOwner.lifecycleScope.launch {
+                _barcodes.emit(it)
+            }
+        }
+
         // Use case
-        val useCaseGroup =
-            UseCaseGroup.Builder().addUseCase(preview).addUseCase(_imageCapture).build()
+        val useCaseGroup = UseCaseGroup.Builder().addUseCase(preview).addUseCase(_imageCapture)
+            .addUseCase(imageAnalysis).build()
 
         // Lifecycle binding
         _camera = cameraProvider.bindToLifecycle(lifecycleOwner, cameraSelector, useCaseGroup)

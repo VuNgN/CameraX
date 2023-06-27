@@ -4,12 +4,16 @@ import android.content.ContentResolver
 import android.content.ContentValues
 import android.content.Context
 import android.os.Build
+import android.os.CountDownTimer
 import android.provider.MediaStore
 import android.view.OrientationEventListener
 import android.view.Surface
+import androidx.camera.core.ImageAnalysis
 import androidx.camera.core.ImageCapture
+import com.google.mlkit.vision.barcode.common.Barcode
 import java.io.OutputStream
 import java.text.SimpleDateFormat
+import java.util.concurrent.Executors
 
 fun SimpleDateFormat.getFileName(extension: String): String =
     this.format(System.currentTimeMillis()) + extension
@@ -44,4 +48,20 @@ fun ImageCapture.enableOrientation(context: Context) {
         }
     }
     orientationEventListener.enable()
+}
+
+fun ImageAnalysis.setupAnalyzer(onFinished: (List<Barcode>) -> Unit) {
+    val timer = object : CountDownTimer(500, 1000) {
+        override fun onTick(millisUntilFinished: Long) {}
+
+        override fun onFinish() {
+            onFinished(emptyList())
+        }
+    }
+    this.setAnalyzer(Executors.newSingleThreadExecutor(), QrCodeAnalyzer { barcodes ->
+        if (barcodes.isNotEmpty()) {
+            timer.start()
+            onFinished(barcodes)
+        }
+    })
 }
