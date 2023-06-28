@@ -2,21 +2,34 @@ package com.vungn.camerax.util
 
 import android.annotation.SuppressLint
 import android.content.Context
+import android.hardware.camera2.CameraCharacteristics
+import android.hardware.camera2.CameraMetadata
 import android.media.AudioManager
 import android.media.MediaActionSound
 import android.util.Log
+import androidx.camera.camera2.interop.Camera2CameraInfo
 import androidx.camera.core.AspectRatio
 import androidx.camera.core.Camera
+import androidx.camera.core.CameraProvider
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.FocusMeteringAction
 import androidx.camera.core.ImageCapture
 import androidx.camera.core.ImageCaptureException
 import androidx.camera.core.MeteringPointFactory
 import androidx.camera.core.TorchState
+import androidx.camera.core.UseCase
 import androidx.camera.core.UseCaseGroup
 import androidx.camera.lifecycle.ProcessCameraProvider
+import androidx.camera.video.MediaStoreOutputOptions
+import androidx.camera.video.Quality
+import androidx.camera.video.QualitySelector
+import androidx.camera.video.Recorder
+import androidx.camera.video.Recording
+import androidx.camera.video.VideoCapture
+import androidx.camera.video.VideoRecordEvent
 import androidx.camera.view.PreviewView
 import androidx.core.content.ContextCompat
+import androidx.core.util.Consumer
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.lifecycleScope
 import com.google.mlkit.vision.barcode.common.Barcode
@@ -28,26 +41,43 @@ import java.util.Locale
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 
+@SuppressLint("UnsafeOptInUsageError")
 class CameraXHelper {
+    private val stopWatch by lazy { StopWatch() }
+
     private lateinit var context: Context
     private lateinit var lifecycleOwner: LifecycleOwner
+    private lateinit var cameraProvider: CameraProvider
     private var _camera: Camera? = null
     private lateinit var _imageCapture: ImageCapture
+    private lateinit var _videoCapture: VideoCapture<Recorder>
+    private var _recording: Recording? = null
+    private val _useCase: MutableStateFlow<UseCase> = MutableStateFlow(UseCase.PHOTO)
     private val _message: MutableStateFlow<String?> = MutableStateFlow(null)
     private val _cameraCapturing: MutableStateFlow<Boolean> = MutableStateFlow(false)
+    private val _videoPause: MutableStateFlow<Boolean> = MutableStateFlow(false)
+    private val _videoTimer: MutableStateFlow<String> = MutableStateFlow("00:00")
     private val _torchState: MutableStateFlow<Int> = MutableStateFlow(TorchState.OFF)
     private val _meteringPoint: MutableStateFlow<MeteringPoint> =
         MutableStateFlow(MeteringPoint(0f, 0f, MeteringPointFactory.getDefaultPointSize()))
     private val _aspectRatio: MutableStateFlow<Int> = MutableStateFlow(AspectRatio.RATIO_4_3)
     private val _len: MutableStateFlow<Int> = MutableStateFlow(CameraSelector.LENS_FACING_BACK)
     private val _barcodes: MutableStateFlow<List<Barcode>> = MutableStateFlow(emptyList())
+    private val _filteredQualities: MutableStateFlow<List<Quality>> = MutableStateFlow(emptyList())
+    private val _videoQuality: MutableStateFlow<Quality> = MutableStateFlow(Quality.SD)
 
     val camera: Camera?
         get() = _camera
+    val useCase: MutableStateFlow<UseCase>
+        get() = _useCase
     val message: MutableStateFlow<String?>
         get() = _message
     val cameraCapturing: MutableStateFlow<Boolean>
         get() = _cameraCapturing
+    val videoPause: MutableStateFlow<Boolean>
+        get() = _videoPause
+    val videoTimer: MutableStateFlow<String>
+        get() = _videoTimer
     val torchState: MutableStateFlow<Int>
         get() = _torchState
     val meteringPoint: MutableStateFlow<MeteringPoint>
@@ -58,6 +88,10 @@ class CameraXHelper {
         get() = _len
     val barcodes: MutableStateFlow<List<Barcode>>
         get() = _barcodes
+    val filteredQualities: MutableStateFlow<List<Quality>>
+        get() = _filteredQualities
+    val videoQuality: MutableStateFlow<Quality>
+        get() = _videoQuality
 
     fun bindPreview(
         context: Context,
@@ -67,12 +101,29 @@ class CameraXHelper {
     ) {
         this.context = context
         this.lifecycleOwner = lifecycleOwner
+        this.cameraProvider = cameraProvider
+        this._filteredQualities.let {
+            val cameraInfo = cameraProvider.availableCameraInfos.filter {
+                Camera2CameraInfo.from(it)
+                    .getCameraCharacteristic(CameraCharacteristics.LENS_FACING) == CameraMetadata.LENS_FACING_BACK
+            }
+            val supportedQualities = QualitySelector.getSupportedQualities(cameraInfo[0])
+            supportedQualities.forEach {
+                Log.d(TAG, "Supported quality: $it")
+            }
+            lifecycleOwner.lifecycleScope.launch {
+                it.emit(listOf(
+                    Quality.UHD, Quality.FHD, Quality.HD, Quality.SD
+                ).filter { supportedQualities.contains(it) })
+            }
+        }
 
         cameraProvider.unbindAll()
 
         // Preview
-        val preview =
-            androidx.camera.core.Preview.Builder().setTargetAspectRatio(_aspectRatio.value).build()
+        val preview = androidx.camera.core.Preview.Builder()
+            .setTargetAspectRatio(if (_useCase.value == UseCase.PHOTO) _aspectRatio.value else AspectRatio.RATIO_4_3)
+            .build()
         val cameraSelector: CameraSelector =
             CameraSelector.Builder().requireLensFacing(_len.value).build()
         preview.setSurfaceProvider(previewView.surfaceProvider)
@@ -93,12 +144,26 @@ class CameraXHelper {
             }
         }
 
+        // Video capture
+        val qualitySelector = QualitySelector.from(_videoQuality.value)
+        val recorder = Recorder.Builder().setExecutor(Executors.newSingleThreadExecutor())
+            .setQualitySelector(qualitySelector).build()
+        _videoCapture = VideoCapture.withOutput(recorder)
+
         // Use case
-        val useCaseGroup = UseCaseGroup.Builder().addUseCase(preview).addUseCase(_imageCapture)
-            .addUseCase(imageAnalysis).build()
+        val useCaseGroup = UseCaseGroup.Builder().addUseCase(preview).addUseCase(
+            when (_useCase.value) {
+                UseCase.PHOTO -> _imageCapture
+                UseCase.VIDEO -> _videoCapture
+            }
+        )
+        if (_useCase.value == UseCase.PHOTO) {
+            useCaseGroup.addUseCase(imageAnalysis).build()
+        }
 
         // Lifecycle binding
-        _camera = cameraProvider.bindToLifecycle(lifecycleOwner, cameraSelector, useCaseGroup)
+        _camera =
+            cameraProvider.bindToLifecycle(lifecycleOwner, cameraSelector, useCaseGroup.build())
 
         _camera?.cameraInfo?.torchState?.observe(lifecycleOwner) {
             lifecycleOwner.lifecycleScope.launch {
@@ -123,6 +188,31 @@ class CameraXHelper {
         )
     }
 
+    @SuppressLint("MissingPermission")
+    fun videoCapturing() {
+        _cameraCapturing.value = true
+        _videoPause.value = false
+        val outputFileOptions = getVideoOutputFileOption()
+        _recording =
+            _videoCapture.output.prepareRecording(context, outputFileOptions).withAudioEnabled()
+                .start(ContextCompat.getMainExecutor(context), onVideoSaveCallback)
+    }
+
+    fun stopVideoCapturing() {
+        _cameraCapturing.value = false
+        _recording?.stop()
+    }
+
+    fun pauseVideoCapturing() {
+        _videoPause.value = true
+        _recording?.pause()
+    }
+
+    fun resumeVideoCapturing() {
+        _videoPause.value = false
+        _recording?.resume()
+    }
+
     fun changeAspectRatio(newRatio: Int) {
         lifecycleOwner.lifecycleScope.launch {
             _aspectRatio.emit(newRatio)
@@ -132,6 +222,18 @@ class CameraXHelper {
     fun switchCamera(newLen: Int) {
         lifecycleOwner.lifecycleScope.launch {
             _len.emit(newLen)
+        }
+    }
+
+    fun changeUseCase(newUseCase: UseCase) {
+        lifecycleOwner.lifecycleScope.launch {
+            _useCase.emit(newUseCase)
+        }
+    }
+
+    fun changeVideoQuality(newQuality: Quality) {
+        lifecycleOwner.lifecycleScope.launch {
+            _videoQuality.emit(newQuality)
         }
     }
 
@@ -177,12 +279,56 @@ class CameraXHelper {
         }
     }
 
+    private val onVideoSaveCallback = Consumer<VideoRecordEvent> {
+        when (it) {
+            is VideoRecordEvent.Start -> {
+                Log.d(MainActivity.TAG, "onVideoSaved: Start")
+                stopWatch.reset()
+                stopWatch.start()
+            }
+
+            is VideoRecordEvent.Pause -> {
+                Log.d(MainActivity.TAG, "onVideoSaved: Pause")
+                stopWatch.pause()
+            }
+
+            is VideoRecordEvent.Finalize -> {
+                Log.d(MainActivity.TAG, "onVideoSaved: Finalize")
+                stopWatch.stop()
+                stopWatch.reset()
+                lifecycleOwner.lifecycleScope.launch {
+                    _videoTimer.emit(stopWatch.getTime())
+                }
+            }
+
+            is VideoRecordEvent.Resume -> {
+                Log.d(MainActivity.TAG, "onVideoSaved: Resume")
+                stopWatch.resume()
+            }
+
+            is VideoRecordEvent.Status -> {
+                Log.d(MainActivity.TAG, "onVideoSaved: Status")
+                Log.d(TAG, "timer: ${stopWatch.getTime()}")
+                lifecycleOwner.lifecycleScope.launch {
+                    _videoTimer.emit(stopWatch.getTime())
+                }
+            }
+        }
+    }
+
     private fun getOutputFileOption(): ImageCapture.OutputFileOptions {
         val fileName = SimpleDateFormat(
             FILENAME_FORMAT, Locale.US
         ).getFileName(PHOTO_EXTENSION)
         val outputStream = context.contentResolver.getImageOutputStream(fileName = fileName)
         return ImageCapture.OutputFileOptions.Builder(outputStream).build()
+    }
+
+    private fun getVideoOutputFileOption(): MediaStoreOutputOptions {
+        val fileName = SimpleDateFormat(
+            FILENAME_FORMAT, Locale.US
+        ).getFileName(VIDEO_EXTENSION)
+        return context.contentResolver.getVideoOutputOptions(fileName = fileName)
     }
 
     companion object {
@@ -195,7 +341,13 @@ class CameraXHelper {
             return INSTANCE!!
         }
 
+        private const val TAG = "CameraXHelper"
         private const val FILENAME_FORMAT = "yyyy-MM-dd-HH-mm-ss-SSS"
         private const val PHOTO_EXTENSION = ".jpeg"
+        private const val VIDEO_EXTENSION = ".mp4"
+    }
+
+    enum class UseCase {
+        PHOTO, VIDEO
     }
 }

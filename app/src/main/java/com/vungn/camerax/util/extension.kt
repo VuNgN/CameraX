@@ -10,6 +10,8 @@ import android.view.OrientationEventListener
 import android.view.Surface
 import androidx.camera.core.ImageAnalysis
 import androidx.camera.core.ImageCapture
+import androidx.camera.video.MediaStoreOutputOptions
+import androidx.camera.video.Quality
 import com.google.mlkit.vision.barcode.common.Barcode
 import java.io.OutputStream
 import java.text.SimpleDateFormat
@@ -33,6 +35,15 @@ fun ContentResolver.getImageOutputStream(
     val uri = this.insert(filePath, contentValues)
 
     return this.openOutputStream(uri!!)!!
+}
+
+fun ContentResolver.getVideoOutputOptions(fileName: String): MediaStoreOutputOptions {
+    val contentValues = ContentValues()
+    contentValues.put(MediaStore.Video.Media.DISPLAY_NAME, fileName)
+    contentValues.put(MediaStore.Video.Media.MIME_TYPE, "video/mp4")
+    return MediaStoreOutputOptions.Builder(this, MediaStore.Video.Media.EXTERNAL_CONTENT_URI)
+        .setContentValues(contentValues)
+        .build()
 }
 
 fun ImageCapture.enableOrientation(context: Context) {
@@ -64,4 +75,15 @@ fun ImageAnalysis.setupAnalyzer(onFinished: (List<Barcode>) -> Unit) {
             onFinished(barcodes)
         }
     })
+}
+
+// A helper function to translate Quality to a string
+fun Quality.qualityToString(): String {
+    return when (this) {
+        Quality.UHD -> "UHD"
+        Quality.FHD -> "FHD"
+        Quality.HD -> "HD"
+        Quality.SD -> "SD"
+        else -> throw IllegalArgumentException()
+    }
 }

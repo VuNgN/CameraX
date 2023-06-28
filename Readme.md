@@ -37,7 +37,7 @@ class CustomLifecycle : LifecycleOwner {
     private val lifecycleRegistry: LifecycleRegistry
 
     init {
-        lifecycleRegistry = LifecycleRegistry(this);
+        lifecycleRegistry = LifecycleRegistry(this)
         lifecycleRegistry.markState(Lifecycle.State.CREATED)
     }
     ...
@@ -1242,7 +1242,7 @@ val videoCapture = VideoCapture.Builder(recorder)
     .setMirrorMode(MIRROR_MODE_ON_FRONT_ONLY)
     .build()
 
-useCases.add(videoCapture);
+useCases.add(videoCapture)
 ```
 
 ## **Control an active recording**
