@@ -1,5 +1,6 @@
 package com.vungn.camerax.util
 
+import android.annotation.SuppressLint
 import android.content.ContentResolver
 import android.content.ContentValues
 import android.content.Context
@@ -10,8 +11,10 @@ import android.view.OrientationEventListener
 import android.view.Surface
 import androidx.camera.core.ImageAnalysis
 import androidx.camera.core.ImageCapture
+import androidx.camera.core.UseCase
 import androidx.camera.video.MediaStoreOutputOptions
 import androidx.camera.video.Quality
+import androidx.camera.video.VideoCapture
 import com.google.mlkit.vision.barcode.common.Barcode
 import java.io.OutputStream
 import java.text.SimpleDateFormat
@@ -42,20 +45,38 @@ fun ContentResolver.getVideoOutputOptions(fileName: String): MediaStoreOutputOpt
     contentValues.put(MediaStore.Video.Media.DISPLAY_NAME, fileName)
     contentValues.put(MediaStore.Video.Media.MIME_TYPE, "video/mp4")
     return MediaStoreOutputOptions.Builder(this, MediaStore.Video.Media.EXTERNAL_CONTENT_URI)
-        .setContentValues(contentValues)
-        .build()
+        .setContentValues(contentValues).build()
 }
 
-fun ImageCapture.enableOrientation(context: Context) {
+fun UseCase.enableOrientation(context: Context, onRotationChange: (Int) -> Unit) {
     val orientationEventListener = object : OrientationEventListener(context) {
+        @SuppressLint("RestrictedApi")
         override fun onOrientationChanged(orientation: Int) {
             val rotation: Int = when (orientation) {
-                in 45..134 -> Surface.ROTATION_270
-                in 135..224 -> Surface.ROTATION_180
-                in 225..314 -> Surface.ROTATION_90
-                else -> Surface.ROTATION_0
+                in 45..134 -> {
+                    onRotationChange(Surface.ROTATION_270)
+                    Surface.ROTATION_270
+                }
+
+                in 135..224 -> {
+                    onRotationChange(Surface.ROTATION_180)
+                    Surface.ROTATION_180
+                }
+
+                in 225..314 -> {
+                    onRotationChange(Surface.ROTATION_90)
+                    Surface.ROTATION_90
+                }
+
+                else -> {
+                    onRotationChange(Surface.ROTATION_0)
+                    Surface.ROTATION_0
+                }
             }
-            this@enableOrientation.targetRotation = rotation
+            when (this@enableOrientation) {
+                is ImageCapture -> this@enableOrientation.targetRotation = rotation
+                is VideoCapture<*> -> this@enableOrientation.targetRotation = rotation
+            }
         }
     }
     orientationEventListener.enable()
@@ -85,5 +106,15 @@ fun Quality.qualityToString(): String {
         Quality.HD -> "HD"
         Quality.SD -> "SD"
         else -> throw IllegalArgumentException()
+    }
+}
+
+fun Int.toRotationFloat(): Float {
+    return when (this) {
+        Surface.ROTATION_0 -> 0f
+        Surface.ROTATION_90 -> 90f
+        Surface.ROTATION_180 -> 180f
+        Surface.ROTATION_270 -> -90f
+        else -> 0f
     }
 }

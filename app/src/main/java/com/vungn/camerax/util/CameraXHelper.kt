@@ -7,6 +7,7 @@ import android.hardware.camera2.CameraMetadata
 import android.media.AudioManager
 import android.media.MediaActionSound
 import android.util.Log
+import android.view.Surface
 import androidx.camera.camera2.interop.Camera2CameraInfo
 import androidx.camera.core.AspectRatio
 import androidx.camera.core.Camera
@@ -17,7 +18,6 @@ import androidx.camera.core.ImageCapture
 import androidx.camera.core.ImageCaptureException
 import androidx.camera.core.MeteringPointFactory
 import androidx.camera.core.TorchState
-import androidx.camera.core.UseCase
 import androidx.camera.core.UseCaseGroup
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.video.MediaStoreOutputOptions
@@ -65,6 +65,7 @@ class CameraXHelper {
     private val _barcodes: MutableStateFlow<List<Barcode>> = MutableStateFlow(emptyList())
     private val _filteredQualities: MutableStateFlow<List<Quality>> = MutableStateFlow(emptyList())
     private val _videoQuality: MutableStateFlow<Quality> = MutableStateFlow(Quality.SD)
+    private val _rotation: MutableStateFlow<Int> = MutableStateFlow(Surface.ROTATION_0)
 
     val camera: Camera?
         get() = _camera
@@ -92,6 +93,8 @@ class CameraXHelper {
         get() = _filteredQualities
     val videoQuality: MutableStateFlow<Quality>
         get() = _videoQuality
+    val rotation: MutableStateFlow<Int>
+        get() = _rotation
 
     fun bindPreview(
         context: Context,
@@ -131,7 +134,7 @@ class CameraXHelper {
         // Image capture
         _imageCapture = ImageCapture.Builder().setTargetRotation(previewView.display.rotation)
             .setTargetAspectRatio(_aspectRatio.value).build()
-        _imageCapture.enableOrientation(context)
+        _imageCapture.enableOrientation(context, this::changeRotation)
 
         // Image analysis
         val imageAnalysis =
@@ -149,6 +152,7 @@ class CameraXHelper {
         val recorder = Recorder.Builder().setExecutor(Executors.newSingleThreadExecutor())
             .setQualitySelector(qualitySelector).build()
         _videoCapture = VideoCapture.withOutput(recorder)
+        _videoCapture.enableOrientation(context, this::changeRotation)
 
         // Use case
         val useCaseGroup = UseCaseGroup.Builder().addUseCase(preview).addUseCase(
@@ -329,6 +333,12 @@ class CameraXHelper {
             FILENAME_FORMAT, Locale.US
         ).getFileName(VIDEO_EXTENSION)
         return context.contentResolver.getVideoOutputOptions(fileName = fileName)
+    }
+
+    private fun changeRotation(newRotation: Int) {
+        lifecycleOwner.lifecycleScope.launch {
+            _rotation.emit(newRotation)
+        }
     }
 
     companion object {

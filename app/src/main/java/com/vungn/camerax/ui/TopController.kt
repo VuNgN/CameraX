@@ -6,16 +6,13 @@ import androidx.camera.core.TorchState
 import androidx.camera.video.Quality
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.ExperimentalAnimationApi
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.FlashOff
 import androidx.compose.material.icons.rounded.FlashOn
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -29,6 +26,7 @@ import androidx.compose.ui.unit.dp
 import com.vungn.camerax.R
 import com.vungn.camerax.util.CameraXHelper
 import com.vungn.camerax.util.qualityToString
+import com.vungn.camerax.util.toRotationFloat
 
 @OptIn(ExperimentalAnimationApi::class)
 @Composable
@@ -40,12 +38,14 @@ fun TopController(
     useCase: CameraXHelper.UseCase,
     capturing: Boolean,
     videoQuality: Quality,
+    rotation: Int,
     changeTorchState: () -> Unit = {},
     changeRatio: (Int) -> Unit = {},
     changeVideoQuality: (Quality) -> Unit
 ) {
     var ratioChoosing by remember { mutableStateOf(false) }
     var qualityChoosing by remember { mutableStateOf(false) }
+    val myRotation by animateFloatAsState(targetValue = rotation.toRotationFloat())
     Row(
         modifier = modifier,
         horizontalArrangement = Arrangement.SpaceAround,
@@ -62,43 +62,35 @@ fun TopController(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         if (isChosen) {
-                            IconButton(colors = IconButtonDefaults.iconButtonColors(
+                            CameraButton(painter = painterResource(id = R.drawable.aspect_ratio_4_3),
+                                contentDescription = "Ratio 4:3",
                                 containerColor = Color.Transparent,
-                                contentColor = if (aspectRatio == AspectRatio.RATIO_4_3) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onBackground
-                            ), onClick = {
-                                changeRatio(AspectRatio.RATIO_4_3)
-                                ratioChoosing = !ratioChoosing
-                            }) {
-                                Icon(
-                                    painter = painterResource(id = R.drawable.aspect_ratio_4_3),
-                                    contentDescription = "Ratio 4:3"
-                                )
-                            }
-                            IconButton(colors = IconButtonDefaults.iconButtonColors(
+                                contentColor = if (aspectRatio == AspectRatio.RATIO_4_3) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onBackground,
+                                rotation = myRotation,
+                                onClick = {
+                                    changeRatio(AspectRatio.RATIO_4_3)
+                                    ratioChoosing = !ratioChoosing
+                                })
+                            CameraButton(painter = painterResource(id = R.drawable.aspect_ratio_16_9),
+                                contentDescription = "Ratio 16:9",
                                 containerColor = Color.Transparent,
-                                contentColor = if (aspectRatio == AspectRatio.RATIO_16_9) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onBackground
-                            ), onClick = {
-                                changeRatio(AspectRatio.RATIO_16_9)
-                                ratioChoosing = !ratioChoosing
-                            }) {
-                                Icon(
-                                    painter = painterResource(id = R.drawable.aspect_ratio_16_9),
-                                    contentDescription = "Ratio 16:9"
-                                )
-                            }
+                                contentColor = if (aspectRatio == AspectRatio.RATIO_16_9) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onBackground,
+                                rotation = myRotation,
+                                onClick = {
+                                    changeRatio(AspectRatio.RATIO_16_9)
+                                    ratioChoosing = !ratioChoosing
+                                })
                         } else {
-                            IconButton(colors = IconButtonDefaults.iconButtonColors(
+                            CameraButton(painter = when (aspectRatio) {
+                                AspectRatio.RATIO_4_3 -> painterResource(id = R.drawable.aspect_ratio_4_3)
+                                AspectRatio.RATIO_16_9 -> painterResource(id = R.drawable.aspect_ratio_16_9)
+                                else -> painterResource(id = R.drawable.aspect_ratio_4_3)
+                            },
+                                contentDescription = "Flash button",
                                 containerColor = Color.Transparent,
-                                contentColor = MaterialTheme.colorScheme.onBackground
-                            ), onClick = { ratioChoosing = !ratioChoosing }) {
-                                Icon(
-                                    painter = when (aspectRatio) {
-                                        AspectRatio.RATIO_4_3 -> painterResource(id = R.drawable.aspect_ratio_4_3)
-                                        AspectRatio.RATIO_16_9 -> painterResource(id = R.drawable.aspect_ratio_16_9)
-                                        else -> painterResource(id = R.drawable.aspect_ratio_4_3)
-                                    }, contentDescription = "Flash button"
-                                )
-                            }
+                                contentColor = MaterialTheme.colorScheme.onBackground,
+                                rotation = myRotation,
+                                onClick = { ratioChoosing = !ratioChoosing })
                         }
                     }
                 }
@@ -114,35 +106,31 @@ fun TopController(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             filteredQualities.forEach { quality ->
-                                IconButton(colors = IconButtonDefaults.iconButtonColors(
+                                CameraButton(text = quality.qualityToString(),
                                     containerColor = Color.Transparent,
-                                    contentColor = if (videoQuality == quality) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onBackground
-                                ), onClick = {
-                                    changeVideoQuality(quality)
-                                    qualityChoosing = !qualityChoosing
-                                }) {
-                                    Text(text = quality.qualityToString())
-                                }
+                                    contentColor = if (videoQuality == quality) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onBackground,
+                                    rotation = myRotation,
+                                    onClick = {
+                                        changeVideoQuality(quality)
+                                        qualityChoosing = !qualityChoosing
+                                    })
                             }
                         }
                     } else {
-                        IconButton(onClick = { qualityChoosing = !qualityChoosing }) {
-                            Text(text = videoQuality.qualityToString())
-                        }
+                        CameraButton(text = videoQuality.qualityToString(),
+                            rotation = myRotation,
+                            onClick = { qualityChoosing = !qualityChoosing })
                     }
                 }
             }
         }
-        IconButton(
-            colors = IconButtonDefaults.iconButtonColors(
-                containerColor = Color.Transparent,
-                contentColor = if (torchState == TorchState.ON) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onBackground
-            ), onClick = changeTorchState
-        ) {
-            Icon(
-                imageVector = if (torchState == TorchState.ON) Icons.Rounded.FlashOn else Icons.Rounded.FlashOff,
-                contentDescription = "Flash button"
-            )
-        }
+        CameraButton(
+            imageVector = if (torchState == TorchState.ON) Icons.Rounded.FlashOn else Icons.Rounded.FlashOff,
+            contentDescription = "Flash button",
+            containerColor = Color.Transparent,
+            contentColor = if (torchState == TorchState.ON) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onBackground,
+            rotation = myRotation,
+            onClick = changeTorchState
+        )
     }
 }

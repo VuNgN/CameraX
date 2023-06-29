@@ -4,6 +4,7 @@ import androidx.camera.core.CameraSelector
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.ExperimentalAnimationApi
 import androidx.compose.animation.SizeTransform
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
@@ -50,11 +51,13 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.vungn.camerax.util.CameraXHelper
 import com.vungn.camerax.util.paddingBottom
+import com.vungn.camerax.util.toRotationFloat
 import kotlinx.coroutines.delay
 
 @OptIn(ExperimentalAnimationApi::class)
@@ -69,6 +72,7 @@ fun BottomController(
     capturing: Boolean,
     videoPause: Boolean,
     videoTimer: String,
+    rotation: Int,
     videoCapture: () -> Unit,
     stopVideoCapturing: () -> Unit,
     pauseVideoCapturing: () -> Unit,
@@ -76,6 +80,7 @@ fun BottomController(
 ) {
     var state by rememberSaveable { mutableStateOf(0) }
     val titles = listOf(CameraXHelper.UseCase.PHOTO, CameraXHelper.UseCase.VIDEO)
+    val myRotation by animateFloatAsState(targetValue = rotation.toRotationFloat())
     Column(
         modifier = modifier,
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -182,19 +187,20 @@ fun BottomController(
             horizontalArrangement = Arrangement.SpaceAround,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            FilledIconButton(
+            CameraButton(
                 modifier = Modifier
                     .clip(CircleShape)
                     .size(50.dp),
                 onClick = { /*TODO*/ },
-                colors = IconButtonDefaults.iconButtonColors(
-                    containerColor = MaterialTheme.colorScheme.background.copy(
-                        0.5f
-                    ), contentColor = MaterialTheme.colorScheme.onBackground
-                )
-            ) {
-                Icon(imageVector = Icons.Rounded.Image, contentDescription = "Select image")
-            }
+                imageVector = Icons.Rounded.Image,
+                contentDescription = "Select image",
+                containerColor = MaterialTheme.colorScheme.background.copy(
+                    0.5f
+                ),
+                contentColor = MaterialTheme.colorScheme.onBackground,
+                type = CameraButtonType.FILLED,
+                rotation = myRotation
+            )
 
             if (useCase == CameraXHelper.UseCase.PHOTO) {
                 Surface(
@@ -275,9 +281,11 @@ fun BottomController(
                             )
                         }) { videoPause ->
                         Icon(
+                            modifier = Modifier.rotate(myRotation),
                             imageVector = if (capturing && useCase == CameraXHelper.UseCase.VIDEO) {
                                 if (videoPause) Icons.Rounded.PlayArrow else Icons.Rounded.Pause
-                            } else Icons.Rounded.Cameraswitch, contentDescription = "Switch camera"
+                            } else Icons.Rounded.Cameraswitch,
+                            contentDescription = "Switch camera"
                         )
                     }
                 }

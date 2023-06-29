@@ -60,6 +60,7 @@ class MainActivity : ComponentActivity() {
             val videoTimer = cameraXHelper.videoTimer.collectAsState()
             val filteredQualities = cameraXHelper.filteredQualities.collectAsState()
             val videoQuality = cameraXHelper.videoQuality.collectAsState()
+            val rotation = cameraXHelper.rotation.collectAsState()
             val state = rememberTransformableState { zoomChange, _, _ ->
                 cameraXHelper.camera?.cameraControl?.setZoomRatio(cameraXHelper.camera?.cameraInfo?.zoomState?.value?.zoomRatio!! * zoomChange)
             }
@@ -127,6 +128,7 @@ class MainActivity : ComponentActivity() {
                             videoTimer = videoTimer.value,
                             filteredQualities = filteredQualities.value,
                             videoQuality = videoQuality.value,
+                            rotation = rotation.value,
                             imageCapture = cameraXHelper::imageCapturing,
                             changeTorchState = cameraXHelper::changeTorchState,
                             changeRatio = cameraXHelper::changeAspectRatio,

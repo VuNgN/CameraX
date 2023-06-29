@@ -66,6 +66,7 @@ fun CameraX(
     useCase: CameraXHelper.UseCase,
     videoTimer: String,
     videoQuality: Quality,
+    rotation: Int,
     imageCapture: () -> Unit = {},
     changeTorchState: () -> Unit = {},
     changeRatio: (Int) -> Unit = {},
@@ -113,6 +114,7 @@ fun CameraX(
             changeRatio = changeRatio,
             capturing = capturing,
             videoQuality = videoQuality,
+            rotation = rotation,
             changeVideoQuality = changeVideoQuality
         )
         Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
@@ -139,6 +141,7 @@ fun CameraX(
                 switchCamera = switchCamera,
                 useCase = useCase,
                 videoTimer = videoTimer,
+                rotation = rotation,
                 switchUseCase = { changeUseCase(it) },
                 videoCapture = videoCapture,
                 videoPause = videoPause,
@@ -170,6 +173,3 @@ fun CameraX(
         }
     }
 }
-
-
-
